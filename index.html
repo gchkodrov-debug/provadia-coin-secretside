@@ -356,7 +356,7 @@
         float embossOf(sampler2D t, vec2 uv) {
           float l0 = lum(texture2D(t, uv).rgb);
           float l1 = lum(texture2D(t, uv + vec2(-0.0045, 0.0045)).rgb);
-          return clamp((l0 - l1) * 2.4, -1.0, 1.0);
+          return clamp((l0 - l1) * 2.4, -0.35, 1.0);
         }
         float hash(vec2 p) {
           return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
@@ -390,10 +390,10 @@
           float embR = embossOf(tRing, uv);
 
           vec3 reveal = vec3(0.0);
-          reveal += uW.x * (relS * uPale * 0.95 + embS * uPale * 0.55);
-          reveal += uW.y * (relM * uPale * 0.95 + embM * uPale * 0.55);
-          reveal += uW.z * (relB * uPale * 0.95 + embB * uPale * 0.55);
-          reveal += uW.w * (relR * uPale * 0.95 + embR * uPale * 0.55);
+          reveal += uW.x * (relS * uPale * 0.92 + embS * uPale * 0.34);
+          reveal += uW.y * (relM * uPale * 0.92 + embM * uPale * 0.34);
+          reveal += uW.z * (relB * uPale * 0.92 + embB * uPale * 0.34);
+          reveal += uW.w * (relR * uPale * 0.92 + embR * uPale * 0.34);
           col += reveal * fall;
 
           // Travelling sheen, stronger while a secret is showing.
