@@ -32,8 +32,40 @@
       height: 100%;
       display: block;
     }
-    #scene canvas { touch-action: none; cursor: grab; }
+    #scene canvas {
+      touch-action: none;
+      cursor: grab;
+      -webkit-user-select: none;
+      user-select: none;
+      -webkit-touch-callout: none;
+      -webkit-tap-highlight-color: transparent;
+    }
     #scene canvas:active { cursor: grabbing; }
+    #tiltBtn {
+      pointer-events: auto;
+      margin-top: 17px;
+      padding: 13px 26px 12px;
+      font-family: "Cinzel", serif;
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: .24em;
+      text-indent: .24em;
+      color: var(--pale-gold);
+      background: rgba(201,162,38,.07);
+      border: 1px solid rgba(201,162,38,.65);
+      border-radius: 999px;
+      cursor: pointer;
+      touch-action: manipulation;
+      -webkit-tap-highlight-color: transparent;
+      box-shadow: 0 0 22px rgba(201,162,38,.12), inset 0 0 14px rgba(201,162,38,.06);
+      transition: background .25s ease, color .25s ease, opacity .25s ease;
+    }
+    #tiltBtn.on {
+      background: linear-gradient(180deg, #E4C65B, var(--gold));
+      color: #3D2A08;
+      border-color: var(--pale-gold);
+    }
+    #tiltBtn.off { opacity: .32; pointer-events: none; }
     .vignette {
       position: fixed;
       inset: 0;
@@ -136,6 +168,7 @@
       #markName { font-size: clamp(19px, 6.4vw, 27px); letter-spacing: .26em; text-indent: .26em; }
       .hint { font-size: 9px; letter-spacing: .15em; text-indent: .15em; }
       .hint-sub { font-size: 8px; }
+      #tiltBtn { font-size: 10px; padding: 12px 20px 11px; margin-top: 14px; }
     }
   </style>
 </head>
@@ -153,6 +186,7 @@
     <div class="rule"></div>
     <p class="hint">Tilt the coin — the back keeps secrets.</p>
     <p class="hint-sub">DRAG TO TILT · DOUBLE-CLICK TO FLIP</p>
+    <button id="tiltBtn" type="button">TILT WITH YOUR PHONE</button>
   </div>
   <div id="fade"></div>
 
@@ -313,7 +347,32 @@
       return tex;
     }
 
+    // THE P — the coin's name-sign, ghosted into the reverse metal. Drawn
+    // as a luminance glyph (white on black) and composited in the shader
+    // with a hard floor on its weight, so it never fully leaves the coin.
+    const pCanvas = document.createElement('canvas');
+    pCanvas.width = 512;
+    pCanvas.height = 512;
+    function drawP() {
+      const px = pCanvas.getContext('2d');
+      px.fillStyle = '#000';
+      px.fillRect(0, 0, 512, 512);
+      px.fillStyle = '#fff';
+      px.font = '600 320px Cinzel, "Times New Roman", serif';
+      px.textAlign = 'center';
+      px.textBaseline = 'middle';
+      px.fillText('P', 256, 274);
+    }
+    drawP();
+    const pTexture = new THREE.CanvasTexture(pCanvas);
+    pTexture.colorSpace = THREE.SRGBColorSpace;
+    pTexture.anisotropy = maxAniso;
+    if (document.fonts && document.fonts.ready) {
+      document.fonts.ready.then(() => { drawP(); pTexture.needsUpdate = true; });
+    }
+
     const secretUniforms = {
+      tP: { value: pTexture },
       tSceptre: { value: loadMark('./marks/sceptre.webp') },
       tMask: { value: loadMark('./marks/mask.webp') },
       tBull: { value: loadMark('./marks/bull.webp') },
@@ -336,6 +395,7 @@
         }
       `,
       fragmentShader: `
+        uniform sampler2D tP;
         uniform sampler2D tSceptre;
         uniform sampler2D tMask;
         uniform sampler2D tBull;
@@ -395,6 +455,17 @@
           reveal += uW.z * (relB * uPale * 0.92 + embB * uPale * 0.34);
           reveal += uW.w * (relR * uPale * 0.92 + embR * uPale * 0.34);
           col += reveal * fall;
+
+          // The name-sign never leaves the metal: a P relief at the centre
+          // of the reverse. Ghosted (0.36) while the side hides its secrets;
+          // as a mark rises around it the P eases down to a 0.25 floor —
+          // dimmer, never gone, at any angle.
+          // (x flipped vs the marks: a letter must read true, not mirrored.)
+          vec2 uvP = (vec2(1.0 - uv.x, uv.y) - 0.5) * 1.9 + 0.5;
+          float relP = reliefOf(tP, uvP);
+          float embP = embossOf(tP, uvP);
+          float pWeight = mix(0.36, 0.25, maxW);
+          col += (relP * uPale * 0.95 + embP * uPale * 0.38) * pWeight * fall;
 
           // Travelling sheen, stronger while a secret is showing.
           float band = pow(max(0.0, 1.0 - abs((uv.x * 0.75 + uv.y * 0.55) - (0.62 + uSheen * 0.55))), 5.0);
@@ -472,18 +543,22 @@
     let dragging = false;
     let lastX = 0;
     let lastY = 0;
-    let lastInteract = -10;
+    let lastInteract = performance.now() / 1000;
+    let rockPhase = 0;
 
     const el = renderer.domElement;
     el.addEventListener('pointerdown', event => {
+      event.preventDefault();
+      if (gyroOn) setGyro(false);
       dragging = true;
       lastX = event.clientX;
       lastY = event.clientY;
       lastInteract = performance.now() / 1000;
-      el.setPointerCapture(event.pointerId);
+      try { el.setPointerCapture(event.pointerId); } catch (err) { /* capture is a nicety, not a need */ }
     });
     el.addEventListener('pointermove', event => {
       if (!dragging) return;
+      event.preventDefault();
       const dx = event.clientX - lastX;
       const dy = event.clientY - lastY;
       lastX = event.clientX;
@@ -503,12 +578,80 @@
       rotXTarget = 0.05;
       lastInteract = performance.now() / 1000;
     });
+    // iOS Safari before v18 ignores `touch-action: none` — the only gesture
+    // protection the old build had. Without an explicit claim, Safari takes
+    // the drag for scroll/zoom and kills it with pointercancel. Claim it:
+    el.addEventListener('touchstart', event => { event.preventDefault(); }, { passive: false });
+    el.addEventListener('touchmove', event => { event.preventDefault(); }, { passive: false });
+    document.addEventListener('gesturestart', event => { event.preventDefault(); });
+
+    // ---------- PHONE TILT (GYRO) ----------
+    // The visitor's own phone becomes the tilt: gamma (left-right tilt of
+    // the device) drives the same reveal angle theta the shader reads.
+    const tiltBtn = document.getElementById('tiltBtn');
+    let gyroOn = false;
+    let gyroTheta = 0;
+    let gyroSmooth = 0;
+    let gyroLastEvent = -10;
+    let gyroSawData = false;
+
+    function onOrientation(event) {
+      if (!event || event.gamma === null || event.gamma === undefined) return;
+      gyroSawData = true;
+      gyroLastEvent = performance.now() / 1000;
+      // A gentle gain: the deep bands (±42°) arrive at a comfortable
+      // ~34° of phone tilt; clamped to the ±50° reveal range.
+      gyroTheta = THREE.MathUtils.clamp(event.gamma * 1.25, -50, 50);
+    }
+    function setGyro(on) {
+      gyroOn = on;
+      tiltBtn.classList.toggle('on', on);
+      if (on) {
+        gyroLastEvent = performance.now() / 1000;
+        window.addEventListener('deviceorientation', onOrientation, true);
+      } else {
+        window.removeEventListener('deviceorientation', onOrientation, true);
+      }
+    }
+    function retireGyroButton() {
+      setGyro(false);
+      tiltBtn.classList.add('off');
+      tiltBtn.disabled = true;
+    }
+    tiltBtn.addEventListener('click', async () => {
+      if (tiltBtn.disabled) return;
+      if (gyroOn) {
+        setGyro(false);
+        lastInteract = performance.now() / 1000;
+        return;
+      }
+      if (typeof DeviceOrientationEvent === 'undefined') { retireGyroButton(); return; }
+      if (typeof DeviceOrientationEvent.requestPermission === 'function') {
+        try {
+          const answer = await DeviceOrientationEvent.requestPermission();
+          if (answer !== 'granted') { retireGyroButton(); return; }
+        } catch (err) { retireGyroButton(); return; }
+      }
+      gyroSawData = false;
+      setGyro(true);
+      // A device with the API but no live sensor stays silent — retire
+      // the button quietly rather than leaving a dead control lit.
+      setTimeout(() => { if (gyroOn && !gyroSawData) retireGyroButton(); }, 4000);
+    });
 
     function resize() {
       const width = Math.max(1, window.innerWidth);
       const height = Math.max(1, window.innerHeight);
       camera.aspect = width / height;
-      camera.fov = camera.aspect < 0.72 ? 50 : 43;
+      // Fit the WHOLE coin on narrow portrait screens: widen the vertical
+      // fov until the coin's full width clears the frame edges. (The old
+      // flat 50° left a 390px phone showing only the coin's middle.)
+      const fitTan = 2.18 / 7.35;
+      let fov = 43;
+      if (Math.tan(THREE.MathUtils.degToRad(fov / 2)) * camera.aspect < fitTan) {
+        fov = Math.min(75, THREE.MathUtils.radToDeg(2 * Math.atan(fitTan / camera.aspect)));
+      }
+      camera.fov = fov;
       camera.updateProjectionMatrix();
       renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
       renderer.setSize(width, height);
@@ -537,10 +680,24 @@
       previousTime = now;
       const absoluteTime = now / 1000;
 
-      if (!hasPose && !dragging && absoluteTime - lastInteract > 2.5) {
-        // Slow auto-rock: front, edge, the whole secret sweep, and back.
-        rotYTarget = Math.sin(elapsed * 0.22) * (Math.PI + 0.78);
-        rotXTarget = 0.05 + Math.sin(elapsed * 0.35) * 0.15;
+      // Gyro drive: while the phone reports fresh tilt, it steers the
+      // coin on the reverse and the auto-rock stays paused.
+      const gyroFresh = gyroOn && (absoluteTime - gyroLastEvent < 2);
+      if (gyroFresh && !hasPose) {
+        gyroSmooth += (gyroTheta - gyroSmooth) * (1 - Math.exp(-delta * 6));
+        rotYTarget = Math.PI + THREE.MathUtils.degToRad(gyroSmooth);
+        rotXTarget = 0.05;
+        lastInteract = absoluteTime;
+      }
+
+      if (!hasPose && !dragging && !gyroFresh && absoluteTime - lastInteract > 2.5) {
+        // Slow auto-rock with the Fortress P as HOME: the cubed-sine wave
+        // dwells at rotY = 0 (the P), sweeps out through every secret,
+        // and returns to rest on the P. First and last sight is the P.
+        rockPhase += delta * 0.22;
+        const rock = Math.sin(rockPhase);
+        rotYTarget = rock * rock * rock * (Math.PI + 0.78);
+        rotXTarget = 0.05 + Math.sin(rockPhase * 1.6) * 0.12;
       }
       const blend = 1 - Math.exp(-delta * 5.5);
       rotY += (rotYTarget - rotY) * blend;
@@ -572,6 +729,9 @@
         }
         setCaption(bestW > 0.38 ? NAMES[best] : 'THE SECRET SIDE');
       }
+
+      // Readable state for verification (and any future debugging).
+      window.__secretSide = { rotY, rotX, thetaDeg, dragging, gyroOn, caption: currentCaption };
 
       camera.lookAt(0, 0.05, 0);
       renderer.render(scene, camera);
