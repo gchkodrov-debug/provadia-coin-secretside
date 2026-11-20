@@ -306,36 +306,39 @@
     coinBody.receiveShadow = true;
     coin.add(coinBody);
 
-    // FRONT — the Fortress P, built exactly as in the winning gate build:
-    // five brick courses, seven merlons on the top arc, 47 beads.
-    const front = new THREE.Group();
-    const frontBrickGeometry = new THREE.BoxGeometry(0.39, 0.21, 0.085);
-    for (let course = 0; course < 5; course++) {
-      const count = course % 2 === 0 ? 5 : 6;
-      for (let i = 0; i < count; i++) {
-        const brick = new THREE.Mesh(frontBrickGeometry, reliefGold);
-        brick.position.set((i - (count - 1) / 2) * 0.45, -0.82 + course * 0.29, 0.2325);
-        brick.castShadow = true;
-        front.add(brick);
-      }
-    }
-    const merlonGeometry = new THREE.BoxGeometry(0.3, 0.24, 0.085);
-    for (let i = 0; i < 7; i++) {
-      const angle = THREE.MathUtils.degToRad(40 + i * (100 / 6));
-      const merlon = new THREE.Mesh(merlonGeometry, reliefGold);
-      merlon.position.set(Math.cos(angle) * 1.5, Math.sin(angle) * 1.5, 0.2325);
-      merlon.rotation.z = angle - Math.PI / 2;
-      merlon.castShadow = true;
-      front.add(merlon);
-    }
+    // FRONT — the P-side is the ORIGINAL published coin face: the brick
+    // Fortress P exactly as published on the market (pump.fun). The face
+    // is the published artwork itself (PROV_p-fortress_avatar_1000_v01.png,
+    // its disc inscribed into the texture), seated on the same 3D coin
+    // body as the reverse, under the same single 45° upper-left key light;
+    // the artwork's own luminance rides as bump so its brick courses,
+    // battlements and plinth catch the light as the coin turns. Its bead
+    // ring is the published ring, in the artwork. (The old procedural
+    // front — a rectangular brick slab with an arc of merlons — was the
+    // gate build's shorthand, not the published coin; it is gone.)
+    const frontTexture = new THREE.TextureLoader().load('./marks/front-published.webp');
+    frontTexture.colorSpace = THREE.SRGBColorSpace;
+    frontTexture.anisotropy = Math.min(8, renderer.capabilities.getMaxAnisotropy());
+    const frontFace = new THREE.Mesh(
+      new THREE.CircleGeometry(1.94, 96),
+      new THREE.MeshStandardMaterial({
+        map: frontTexture,
+        bumpMap: frontTexture,
+        bumpScale: 0.12,
+        metalness: 0.2,
+        roughness: 0.48,
+        emissive: 0x6B531F,
+        emissiveMap: frontTexture,
+        emissiveIntensity: 0.7
+      })
+    );
+    frontFace.position.z = 0.186;
+    frontFace.receiveShadow = true;
+    coin.add(frontFace);
+
+    // Shared bead geometry — the reverse's 47-bead ring (built below)
+    // is made from it.
     const beadGeometry = new THREE.SphereGeometry(0.047, 10, 8);
-    for (let i = 0; i < 47; i++) {
-      const angle = i / 47 * Math.PI * 2;
-      const bead = new THREE.Mesh(beadGeometry, paleGold);
-      bead.position.set(Math.cos(angle) * 1.76, Math.sin(angle) * 1.76, 0.225);
-      front.add(bead);
-    }
-    coin.add(front);
 
     // REVERSE — the Secret Side. A shader face: four marks live in the gold
     // as luminance relief, weighted by the viewing angle (lenticular logic).
