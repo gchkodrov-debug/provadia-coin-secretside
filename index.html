@@ -1,0 +1,582 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>PROVADIA — THE SECRET SIDE</title>
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;600&amp;family=Inter:wght@400;500;600&amp;display=swap" rel="stylesheet">
+  <style>
+    :root {
+      color-scheme: dark;
+      --field: #141210;
+      --gold: #C9A227;
+      --pale-gold: #FFEFC1;
+      --salt: #F4EFE6;
+    }
+    * { box-sizing: border-box; }
+    html, body {
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      overflow: hidden;
+      background: var(--field);
+    }
+    body {
+      font-family: "Inter", sans-serif;
+      -webkit-font-smoothing: antialiased;
+    }
+    #scene, #scene canvas {
+      position: fixed;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+    #scene canvas { touch-action: none; cursor: grab; }
+    #scene canvas:active { cursor: grabbing; }
+    .vignette {
+      position: fixed;
+      inset: 0;
+      z-index: 2;
+      pointer-events: none;
+      background: radial-gradient(ellipse at center, transparent 38%, rgba(20,18,16,.22) 66%, rgba(20,18,16,.88) 112%);
+    }
+    .brand {
+      position: fixed;
+      top: max(30px, env(safe-area-inset-top));
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 3;
+      width: max-content;
+      max-width: 94vw;
+      text-align: center;
+      pointer-events: none;
+    }
+    .brand h1 {
+      margin: 0;
+      color: var(--pale-gold);
+      font-family: "Cinzel", serif;
+      font-size: clamp(26px, 3.2vw, 46px);
+      font-weight: 500;
+      line-height: 1.1;
+      letter-spacing: .29em;
+      text-indent: .29em;
+      text-shadow: 0 2px 24px rgba(201,162,38,.18);
+    }
+    .brand p {
+      margin: 11px 0 0;
+      color: rgba(244,239,230,.72);
+      font-size: 10px;
+      font-weight: 500;
+      letter-spacing: .23em;
+      text-indent: .23em;
+      white-space: nowrap;
+    }
+    .caption-wrap {
+      position: fixed;
+      left: 50%;
+      bottom: max(34px, env(safe-area-inset-bottom));
+      transform: translateX(-50%);
+      z-index: 3;
+      width: max-content;
+      max-width: 94vw;
+      text-align: center;
+      pointer-events: none;
+    }
+    #markName {
+      margin: 0;
+      color: var(--pale-gold);
+      font-family: "Cinzel", serif;
+      font-size: clamp(21px, 3vw, 36px);
+      font-weight: 600;
+      letter-spacing: .34em;
+      text-indent: .34em;
+      text-shadow: 0 0 26px rgba(201,162,38,.35), 0 2px 18px rgba(201,162,38,.2);
+      transition: opacity .22s ease;
+    }
+    .rule {
+      width: 118px;
+      height: 1px;
+      margin: 15px auto 13px;
+      background: linear-gradient(90deg, transparent, rgba(201,162,38,.75), transparent);
+    }
+    .hint {
+      margin: 0;
+      color: rgba(244,239,230,.78);
+      font-size: 11px;
+      font-weight: 500;
+      letter-spacing: .21em;
+      text-indent: .21em;
+      white-space: nowrap;
+    }
+    .hint-sub {
+      margin: 8px 0 0;
+      color: rgba(244,239,230,.42);
+      font-size: 9px;
+      font-weight: 500;
+      letter-spacing: .24em;
+      text-indent: .24em;
+      white-space: nowrap;
+    }
+    #fade {
+      position: fixed;
+      inset: 0;
+      z-index: 10;
+      pointer-events: none;
+      background: var(--field);
+      animation: clear-fade 2.2s ease-out both;
+    }
+    @keyframes clear-fade {
+      0%, 8% { opacity: 1; }
+      100% { opacity: 0; }
+    }
+    @media (max-width: 700px) {
+      .brand h1 { font-size: clamp(24px, 8vw, 33px); letter-spacing: .2em; text-indent: .2em; }
+      .brand p { font-size: 8px; letter-spacing: .13em; text-indent: .13em; }
+      #markName { font-size: clamp(19px, 6.4vw, 27px); letter-spacing: .26em; text-indent: .26em; }
+      .hint { font-size: 9px; letter-spacing: .15em; text-indent: .15em; }
+      .hint-sub { font-size: 8px; }
+    }
+  </style>
+</head>
+<body>
+  <div id="scene" aria-hidden="true"></div>
+  <div class="vignette"></div>
+
+  <header class="brand">
+    <h1>PROVADIA</h1>
+    <p>THE SECRET SIDE · REVERSE OF THE COIN</p>
+  </header>
+
+  <div class="caption-wrap">
+    <h2 id="markName">THE FORTRESS P</h2>
+    <div class="rule"></div>
+    <p class="hint">Tilt the coin — the back keeps secrets.</p>
+    <p class="hint-sub">DRAG TO TILT · DOUBLE-CLICK TO FLIP</p>
+  </div>
+  <div id="fade"></div>
+
+  <script type="module">
+    import * as THREE from './three.module.min.js';
+
+    const COLORS = {
+      field: 0x141210,
+      gold: 0xC9A227,
+      paleGold: 0xFFEFC1,
+      deepGold: 0x6B4A12,
+      shadowGold: 0x3D2A08,
+      salt: 0xF4EFE6
+    };
+
+    const container = document.getElementById('scene');
+    const markNameEl = document.getElementById('markName');
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    renderer.outputColorSpace = THREE.SRGBColorSpace;
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.12;
+    container.appendChild(renderer.domElement);
+
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(COLORS.field);
+    scene.fog = new THREE.FogExp2(COLORS.field, 0.02);
+
+    const camera = new THREE.PerspectiveCamera(43, window.innerWidth / window.innerHeight, 0.1, 100);
+    camera.position.set(0, 0.35, 7.4);
+
+    const key = new THREE.DirectionalLight(COLORS.paleGold, 3.1);
+    key.position.set(-7, 11, 10);
+    key.castShadow = true;
+    key.shadow.mapSize.set(2048, 2048);
+    key.shadow.camera.left = -6;
+    key.shadow.camera.right = 6;
+    key.shadow.camera.top = 6;
+    key.shadow.camera.bottom = -6;
+    key.shadow.camera.near = 4;
+    key.shadow.camera.far = 40;
+    key.shadow.bias = -0.0004;
+    key.shadow.normalBias = 0.025;
+    scene.add(key, key.target);
+
+    const rim = new THREE.DirectionalLight(COLORS.gold, 0.85);
+    rim.position.set(6, 2, -7);
+    scene.add(rim);
+
+    const hemisphere = new THREE.HemisphereLight(COLORS.salt, COLORS.field, 0.26);
+    scene.add(hemisphere);
+
+    const ember = new THREE.PointLight(COLORS.gold, 1.6, 10, 2);
+    ember.position.set(0, 0.4, 2.6);
+    scene.add(ember);
+
+    const ground = new THREE.Mesh(
+      new THREE.CircleGeometry(42, 96),
+      new THREE.MeshStandardMaterial({ color: COLORS.field, roughness: 0.98, metalness: 0.02 })
+    );
+    ground.rotation.x = -Math.PI / 2;
+    ground.position.y = -2.75;
+    ground.receiveShadow = true;
+    scene.add(ground);
+
+    // Soft gold glow behind the coin.
+    const glowCanvas = document.createElement('canvas');
+    glowCanvas.width = 512;
+    glowCanvas.height = 512;
+    const gtx = glowCanvas.getContext('2d');
+    const glowGrad = gtx.createRadialGradient(256, 256, 10, 256, 256, 256);
+    glowGrad.addColorStop(0, 'rgba(201,162,38,0.30)');
+    glowGrad.addColorStop(0.45, 'rgba(107,74,18,0.14)');
+    glowGrad.addColorStop(1, 'rgba(20,18,16,0)');
+    gtx.fillStyle = glowGrad;
+    gtx.fillRect(0, 0, 512, 512);
+    const glow = new THREE.Mesh(
+      new THREE.PlaneGeometry(11, 11),
+      new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(glowCanvas), transparent: true, depthWrite: false })
+    );
+    glow.position.set(0, 0.1, -3.4);
+    scene.add(glow);
+
+    // ---------- THE COIN ----------
+    const coin = new THREE.Group();
+    coin.position.set(0, 0.1, 0);
+    const gold = new THREE.MeshStandardMaterial({
+      color: COLORS.gold,
+      emissive: COLORS.shadowGold,
+      emissiveIntensity: 0.2,
+      metalness: 0.76,
+      roughness: 0.29
+    });
+    const reliefGold = new THREE.MeshStandardMaterial({
+      color: COLORS.gold,
+      emissive: COLORS.shadowGold,
+      emissiveIntensity: 0.16,
+      metalness: 0.69,
+      roughness: 0.32
+    });
+    const paleGold = new THREE.MeshStandardMaterial({
+      color: COLORS.paleGold,
+      emissive: COLORS.deepGold,
+      emissiveIntensity: 0.13,
+      metalness: 0.67,
+      roughness: 0.26
+    });
+
+    const coinBodyGeometry = new THREE.CylinderGeometry(2, 2, 0.36, 96, 1, false);
+    coinBodyGeometry.rotateX(Math.PI / 2);
+    const coinBody = new THREE.Mesh(coinBodyGeometry, gold);
+    coinBody.castShadow = true;
+    coinBody.receiveShadow = true;
+    coin.add(coinBody);
+
+    // FRONT — the Fortress P, built exactly as in the winning gate build:
+    // five brick courses, seven merlons on the top arc, 47 beads.
+    const front = new THREE.Group();
+    const frontBrickGeometry = new THREE.BoxGeometry(0.39, 0.21, 0.085);
+    for (let course = 0; course < 5; course++) {
+      const count = course % 2 === 0 ? 5 : 6;
+      for (let i = 0; i < count; i++) {
+        const brick = new THREE.Mesh(frontBrickGeometry, reliefGold);
+        brick.position.set((i - (count - 1) / 2) * 0.45, -0.82 + course * 0.29, 0.2325);
+        brick.castShadow = true;
+        front.add(brick);
+      }
+    }
+    const merlonGeometry = new THREE.BoxGeometry(0.3, 0.24, 0.085);
+    for (let i = 0; i < 7; i++) {
+      const angle = THREE.MathUtils.degToRad(40 + i * (100 / 6));
+      const merlon = new THREE.Mesh(merlonGeometry, reliefGold);
+      merlon.position.set(Math.cos(angle) * 1.5, Math.sin(angle) * 1.5, 0.2325);
+      merlon.rotation.z = angle - Math.PI / 2;
+      merlon.castShadow = true;
+      front.add(merlon);
+    }
+    const beadGeometry = new THREE.SphereGeometry(0.047, 10, 8);
+    for (let i = 0; i < 47; i++) {
+      const angle = i / 47 * Math.PI * 2;
+      const bead = new THREE.Mesh(beadGeometry, paleGold);
+      bead.position.set(Math.cos(angle) * 1.76, Math.sin(angle) * 1.76, 0.225);
+      front.add(bead);
+    }
+    coin.add(front);
+
+    // REVERSE — the Secret Side. A shader face: four marks live in the gold
+    // as luminance relief, weighted by the viewing angle (lenticular logic).
+    const maxAniso = Math.min(8, renderer.capabilities.getMaxAnisotropy());
+    function loadMark(path) {
+      const tex = new THREE.TextureLoader().load(path);
+      tex.colorSpace = THREE.SRGBColorSpace;
+      tex.anisotropy = maxAniso;
+      return tex;
+    }
+
+    const secretUniforms = {
+      tSceptre: { value: loadMark('./marks/sceptre.webp') },
+      tMask: { value: loadMark('./marks/mask.webp') },
+      tBull: { value: loadMark('./marks/bull.webp') },
+      tRing: { value: loadMark('./marks/ring.webp') },
+      uW: { value: new THREE.Vector4(0, 0, 0, 0) },
+      uSheen: { value: 0 },
+      uGold: { value: new THREE.Color(COLORS.gold) },
+      uPale: { value: new THREE.Color(COLORS.paleGold) },
+      uDeep: { value: new THREE.Color(COLORS.deepGold) },
+      uShadow: { value: new THREE.Color(COLORS.shadowGold) }
+    };
+
+    const secretMaterial = new THREE.ShaderMaterial({
+      uniforms: secretUniforms,
+      vertexShader: `
+        varying vec2 vUv;
+        void main() {
+          vUv = uv;
+          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+      `,
+      fragmentShader: `
+        uniform sampler2D tSceptre;
+        uniform sampler2D tMask;
+        uniform sampler2D tBull;
+        uniform sampler2D tRing;
+        uniform vec4 uW;
+        uniform float uSheen;
+        uniform vec3 uGold;
+        uniform vec3 uPale;
+        uniform vec3 uDeep;
+        uniform vec3 uShadow;
+        varying vec2 vUv;
+
+        float lum(vec3 c) { return dot(c, vec3(0.299, 0.587, 0.114)); }
+        float reliefOf(sampler2D t, vec2 uv) {
+          float l = lum(texture2D(t, uv).rgb);
+          return smoothstep(0.03, 0.45, l);
+        }
+        float embossOf(sampler2D t, vec2 uv) {
+          float l0 = lum(texture2D(t, uv).rgb);
+          float l1 = lum(texture2D(t, uv + vec2(-0.0045, 0.0045)).rgb);
+          return clamp((l0 - l1) * 2.4, -1.0, 1.0);
+        }
+        float hash(vec2 p) {
+          return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
+        }
+
+        void main() {
+          // The reverse is viewed from behind the disc: un-mirror x so the
+          // marks read correctly to the viewer of the back face.
+          vec2 uv = vec2(1.0 - vUv.x, vUv.y);
+          vec2 c = uv - 0.5;
+          float r = length(c) * 2.0;
+
+          // Base gold: warm centre, deep edge, fine circular brushing + grain.
+          vec3 col = mix(uGold * 0.92, uDeep, smoothstep(0.05, 1.05, r));
+          col = mix(col, uShadow, smoothstep(0.86, 1.0, r) * 0.55);
+          col *= 1.0 + 0.028 * sin(r * 150.0) + (hash(floor(uv * 900.0)) - 0.5) * 0.03;
+          // A quiet engraved double ring near the rim.
+          float groove = smoothstep(0.012, 0.0, abs(r - 0.865)) + smoothstep(0.010, 0.0, abs(r - 0.905));
+          col *= 1.0 - groove * 0.13;
+
+          float fall = smoothstep(1.03, 0.80, r);
+          float maxW = max(max(uW.x, uW.y), max(uW.z, uW.w));
+
+          float relS = reliefOf(tSceptre, uv);
+          float relM = reliefOf(tMask, uv);
+          float relB = reliefOf(tBull, uv);
+          float relR = reliefOf(tRing, uv);
+          float embS = embossOf(tSceptre, uv);
+          float embM = embossOf(tMask, uv);
+          float embB = embossOf(tBull, uv);
+          float embR = embossOf(tRing, uv);
+
+          vec3 reveal = vec3(0.0);
+          reveal += uW.x * (relS * uPale * 0.95 + embS * uPale * 0.55);
+          reveal += uW.y * (relM * uPale * 0.95 + embM * uPale * 0.55);
+          reveal += uW.z * (relB * uPale * 0.95 + embB * uPale * 0.55);
+          reveal += uW.w * (relR * uPale * 0.95 + embR * uPale * 0.55);
+          col += reveal * fall;
+
+          // Travelling sheen, stronger while a secret is showing.
+          float band = pow(max(0.0, 1.0 - abs((uv.x * 0.75 + uv.y * 0.55) - (0.62 + uSheen * 0.55))), 5.0);
+          col += band * (0.045 + 0.15 * maxW) * uPale;
+
+          // Seat the face into the rim.
+          col *= 1.0 - 0.32 * smoothstep(0.93, 1.0, r);
+
+          gl_FragColor = vec4(col, 1.0);
+          #include <tonemapping_fragment>
+          #include <colorspace_fragment>
+        }
+      `
+    });
+
+    const secretFace = new THREE.Mesh(new THREE.CircleGeometry(1.94, 96), secretMaterial);
+    secretFace.rotation.y = Math.PI;
+    secretFace.position.z = -0.186;
+    coin.add(secretFace);
+
+    // The 47-bead ring frames the secret face, as on the front.
+    const back = new THREE.Group();
+    for (let i = 0; i < 47; i++) {
+      const angle = i / 47 * Math.PI * 2;
+      const bead = new THREE.Mesh(beadGeometry, paleGold);
+      bead.position.set(Math.cos(angle) * 1.76, Math.sin(angle) * 1.76, -0.225);
+      back.add(bead);
+    }
+    coin.add(back);
+    scene.add(coin);
+
+    // ---------- TILT-REVEAL LOGIC ----------
+    // As the reverse turns through the light, each mark owns an angle band.
+    // theta = signed angle (deg) between the reverse normal and the camera:
+    //    -42 THE SCEPTRE · -14 THE MASK · +14 THE BULL · +42 THE RING-IDOL
+    // At theta = 0 (straight on) the gate closes: the reverse reads plain.
+    const CENTERS = [-42, -14, 14, 42];
+    const NAMES = ['THE SCEPTRE', 'THE MASK', 'THE BULL', 'THE RING-IDOL'];
+
+    function smooth01(x) {
+      const t = THREE.MathUtils.clamp(x, 0, 1);
+      return t * t * (3 - 2 * t);
+    }
+    function computeWeights(thetaDeg) {
+      const gate = smooth01((Math.abs(thetaDeg) - 4) / 7);
+      return CENTERS.map(center => {
+        const raw = Math.max(0, 1 - Math.abs(thetaDeg - center) / 18);
+        return (raw * raw * (3 - 2 * raw)) * gate;
+      });
+    }
+    function wrapDeg(deg) {
+      let d = deg % 360;
+      if (d > 180) d -= 360;
+      if (d < -180) d += 360;
+      return d;
+    }
+
+    // ---------- POSES / INTERACTION ----------
+    const query = new URLSearchParams(window.location.search);
+    const POSES = {
+      front: 0,
+      plain: Math.PI,
+      sceptre: Math.PI - THREE.MathUtils.degToRad(42),
+      mask: Math.PI - THREE.MathUtils.degToRad(14),
+      bull: Math.PI + THREE.MathUtils.degToRad(14),
+      ring: Math.PI + THREE.MathUtils.degToRad(42)
+    };
+    const poseName = query.get('pose');
+    const hasPose = poseName !== null && Object.prototype.hasOwnProperty.call(POSES, poseName);
+
+    let rotY = hasPose ? POSES[poseName] : 0;
+    let rotX = 0.05;
+    let rotYTarget = rotY;
+    let rotXTarget = rotX;
+    let dragging = false;
+    let lastX = 0;
+    let lastY = 0;
+    let lastInteract = -10;
+
+    const el = renderer.domElement;
+    el.addEventListener('pointerdown', event => {
+      dragging = true;
+      lastX = event.clientX;
+      lastY = event.clientY;
+      lastInteract = performance.now() / 1000;
+      el.setPointerCapture(event.pointerId);
+    });
+    el.addEventListener('pointermove', event => {
+      if (!dragging) return;
+      const dx = event.clientX - lastX;
+      const dy = event.clientY - lastY;
+      lastX = event.clientX;
+      lastY = event.clientY;
+      rotYTarget += dx * 0.0085;
+      rotXTarget = THREE.MathUtils.clamp(rotXTarget + dy * 0.005, -0.55, 0.55);
+      lastInteract = performance.now() / 1000;
+    });
+    function endDrag() {
+      dragging = false;
+      lastInteract = performance.now() / 1000;
+    }
+    el.addEventListener('pointerup', endDrag);
+    el.addEventListener('pointercancel', endDrag);
+    el.addEventListener('dblclick', () => {
+      rotYTarget = (Math.round(rotYTarget / Math.PI) + 1) * Math.PI;
+      rotXTarget = 0.05;
+      lastInteract = performance.now() / 1000;
+    });
+
+    function resize() {
+      const width = Math.max(1, window.innerWidth);
+      const height = Math.max(1, window.innerHeight);
+      camera.aspect = width / height;
+      camera.fov = camera.aspect < 0.72 ? 50 : 43;
+      camera.updateProjectionMatrix();
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+      renderer.setSize(width, height);
+    }
+    window.addEventListener('resize', resize, { passive: true });
+    resize();
+
+    let currentCaption = 'THE FORTRESS P';
+    function setCaption(text) {
+      if (text === currentCaption) return;
+      currentCaption = text;
+      markNameEl.style.opacity = '0';
+      setTimeout(() => {
+        markNameEl.textContent = text;
+        markNameEl.style.opacity = '1';
+      }, 180);
+    }
+
+    const startTime = performance.now();
+    let previousTime = startTime;
+
+    function animate(now) {
+      requestAnimationFrame(animate);
+      const elapsed = (now - startTime) / 1000;
+      const delta = Math.min(Math.max((now - previousTime) / 1000, 0), 0.05);
+      previousTime = now;
+      const absoluteTime = now / 1000;
+
+      if (!hasPose && !dragging && absoluteTime - lastInteract > 2.5) {
+        // Slow auto-rock: front, edge, the whole secret sweep, and back.
+        rotYTarget = Math.sin(elapsed * 0.22) * (Math.PI + 0.78);
+        rotXTarget = 0.05 + Math.sin(elapsed * 0.35) * 0.15;
+      }
+      const blend = 1 - Math.exp(-delta * 5.5);
+      rotY += (rotYTarget - rotY) * blend;
+      rotX += (rotXTarget - rotX) * blend;
+
+      coin.rotation.y = rotY;
+      coin.rotation.x = rotX;
+      coin.position.y = 0.1 + Math.sin(elapsed * 0.85) * 0.03;
+      ember.intensity = 1.6 + Math.sin(elapsed * 1.7) * 0.25;
+
+      // Where does the reverse stand against the camera?
+      const cosY = Math.cos(rotY);
+      const thetaDeg = wrapDeg(THREE.MathUtils.radToDeg(rotY) - 180);
+      const weights = computeWeights(thetaDeg);
+      if (cosY < -0.2) {
+        secretUniforms.uW.value.set(weights[0], weights[1], weights[2], weights[3]);
+      } else {
+        secretUniforms.uW.value.set(0, 0, 0, 0);
+      }
+      secretUniforms.uSheen.value = THREE.MathUtils.clamp(thetaDeg / 60, -1, 1);
+
+      if (cosY > 0.35) {
+        setCaption('THE FORTRESS P');
+      } else if (cosY < -0.35) {
+        let best = 0;
+        let bestW = 0;
+        for (let i = 0; i < 4; i++) {
+          if (weights[i] > bestW) { bestW = weights[i]; best = i; }
+        }
+        setCaption(bestW > 0.38 ? NAMES[best] : 'THE SECRET SIDE');
+      }
+
+      camera.lookAt(0, 0.05, 0);
+      renderer.render(scene, camera);
+    }
+    requestAnimationFrame(animate);
+  </script>
+</body>
+</html>
