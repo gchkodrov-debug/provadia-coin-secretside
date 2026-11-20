@@ -347,16 +347,25 @@
       return tex;
     }
 
-    // THE P — the coin's name-sign, ghosted into the reverse metal. Drawn
-    // as a luminance glyph (white on black) and composited in the shader
-    // with a hard floor on its weight, so it never fully leaves the coin.
+    // THE P — the coin's name-sign, ghosted into the reverse metal: the
+    // ORIGINAL Fortress P logo — the brick-and-battlement emblem from the
+    // coin's own front — isolated as a luminance relief (white on black)
+    // and composited in the shader with a hard floor on its weight, so it
+    // never fully leaves the coin. Until the logo lands, a Cinzel glyph
+    // stands in so the name-sign is never missing from the metal.
     const pCanvas = document.createElement('canvas');
     pCanvas.width = 512;
     pCanvas.height = 512;
+    const pLogo = new Image();
+    let pLogoReady = false;
     function drawP() {
       const px = pCanvas.getContext('2d');
       px.fillStyle = '#000';
       px.fillRect(0, 0, 512, 512);
+      if (pLogoReady) {
+        px.drawImage(pLogo, 0, 0, 512, 512);
+        return;
+      }
       px.fillStyle = '#fff';
       px.font = '600 320px Cinzel, "Times New Roman", serif';
       px.textAlign = 'center';
@@ -367,6 +376,8 @@
     const pTexture = new THREE.CanvasTexture(pCanvas);
     pTexture.colorSpace = THREE.SRGBColorSpace;
     pTexture.anisotropy = maxAniso;
+    pLogo.onload = () => { pLogoReady = true; drawP(); pTexture.needsUpdate = true; };
+    pLogo.src = './marks/fortress-p.png';
     if (document.fonts && document.fonts.ready) {
       document.fonts.ready.then(() => { drawP(); pTexture.needsUpdate = true; });
     }
